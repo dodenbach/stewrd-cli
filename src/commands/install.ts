@@ -10,6 +10,21 @@ import {
 } from "../utils/client-paths.js";
 import type { McpServer } from "../types.js";
 
+const REGISTRY_API = "https://stewrd.dev/api/registry";
+
+async function trackInstall(server: string, client: string): Promise<void> {
+  try {
+    await fetch(REGISTRY_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ server, client, version: "0.2.0" }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch {
+    // Silent fail — tracking should never break install
+  }
+}
+
 interface InstallOptions {
   client?: string;
   all?: boolean;
@@ -126,6 +141,15 @@ export async function install(
     console.log(
       chalk.dim(`\n  Docs: https://github.com/${entry.repo}`)
     );
+  }
+
+  console.log(
+    chalk.dim(`  https://stewrd.dev/registry/${entry.name}`)
+  );
+
+  // Track install (fire and forget, don't block CLI)
+  if (added > 0) {
+    trackInstall(entry.name, targetClients[0]).catch(() => {});
   }
 
   console.log("");
