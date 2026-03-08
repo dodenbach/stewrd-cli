@@ -1,5 +1,12 @@
 import chalk from "chalk";
-import { REGISTRY } from "../registry/servers.js";
+import ora from "ora";
+import {
+  searchOfficialRegistry,
+  getServerFromRegistry,
+  registryEntryToMcpServer,
+  formatRegistryEntry,
+} from "../registry/mcp-registry.js";
+import { REGISTRY as LOCAL_REGISTRY } from "../registry/servers.js";
 import { addServerToClient } from "../utils/config-writer.js";
 import {
   getClientConfigPath,
@@ -10,28 +17,13 @@ import {
 } from "../utils/client-paths.js";
 import type { McpServer } from "../types.js";
 
-const REGISTRY_API = "https://stewrd.dev/api/registry";
-
-async function trackInstall(server: string, client: string): Promise<void> {
-  try {
-    await fetch(REGISTRY_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ server, client, version: "0.2.0" }),
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch {
-    // Silent fail — tracking should never break install
-  }
-}
-
 interface InstallOptions {
   client?: string;
   all?: boolean;
 }
 
-function registryToMcpServer(
-  entry: (typeof REGISTRY)[number]
+function localRegistryToMcpServer(
+  entry: (typeof LOCAL_REGISTRY)[number]
 ): McpServer {
   const server: McpServer = {
     name: entry.name,
@@ -60,28 +52,101 @@ export async function install(
   serverName: string,
   options: InstallOptions
 ): Promise<void> {
-  // Find in registry
-  const entry = REGISTRY.find(
+  // First check local curated registry (fast, no network)
+  const localEntry = LOCAL_REGISTRY.find(
     (e) =>
       e.name.toLowerCase() === serverName.toLowerCase() ||
       e.package.toLowerCase() === serverName.toLowerCase()
   );
 
-  if (!entry) {
-    console.error(
-      chalk.red(`\n  Server "${serverName}" not found in registry.`)
-    );
-    console.log(chalk.dim("  Run: stewrd search to browse available servers\n"));
-    process.exit(1);
+  let server: McpServer | null = null;
+  let source = "local";
+
+  if (localEntry) {
+    server = localRegistryToMcpServer(localEntry);
+    source = "curated";
+  } else {
+    // Search the official MCP registry
+    const spinner = ora(
+      `Searching official MCP registry for "${serverName}"...`
+    ).start();
+
+    try {
+      // Try exact name match first
+      let entry = await getServerFromRegistry(serverName);
+
+      // If not found, try searching
+      if (!entry) {
+        const results = await searchOfficialRegistry(serverName, 5);
+        if (results.servers.length > 0) {
+          // Take the first result
+          entry = results.servers[0];
+          const info = formatRegistryEntry(entry);
+          spinner.stop();
+          console.log(
+            chalk.dim(`\n  No exact match. Using closest: ${info.name}`)
+          );
+        }
+      }
+
+      if (entry) {
+        spinner.stop();
+        server = registryEntryToMcpServer(entry);
+        source = "official";
+
+        if (!server) {
+          console.error(
+            chalk.red(
+              `\n  Found "${serverName}" in registry but couldn't parse its config.`
+            )
+          );
+          console.log(
+            chalk.dim(
+              "  This server may use an unsupported transport type.\n"
+            )
+          );
+          process.exit(1);
+        }
+      } else {
+        spinner.stop();
+        console.error(
+          chalk.red(`\n  Server "${serverName}" not found.`)
+        );
+        console.log(chalk.dim("  Try: stewrd search <query>"));
+        console.log(
+          chalk.dim(
+            "  Browse: https://registry.modelcontextprotocol.io\n"
+          )
+        );
+        process.exit(1);
+      }
+    } catch (e) {
+      spinner.fail(`Registry lookup failed: ${e}`);
+      console.log(
+        chalk.dim(
+          "\n  Tip: check your internet connection or try stewrd add for manual config\n"
+        )
+      );
+      process.exit(1);
+    }
   }
 
-  const server = registryToMcpServer(entry);
-  const verified = entry.verified ? chalk.green(" (verified)") : "";
+  if (!server) {
+    process.exit(1);
+    return;
+  }
+
+  const sourceLabel =
+    source === "curated"
+      ? chalk.dim(" (curated)")
+      : chalk.dim(" (official registry)");
 
   console.log(
-    `\n  Installing ${chalk.bold(entry.name)}${verified}`
+    `\n  Installing ${chalk.bold(server.name)}${sourceLabel}`
   );
-  console.log(chalk.dim(`  ${entry.description}\n`));
+  if (server.description) {
+    console.log(chalk.dim(`  ${server.description}\n`));
+  }
 
   // Determine target clients
   let targetClients: ClientId[];
@@ -100,27 +165,22 @@ export async function install(
     }
     targetClients = [clientId];
   } else {
-    // Default: claude-code
     targetClients = ["claude-code"];
   }
 
   let added = 0;
-  let existed = 0;
 
   for (const clientId of targetClients) {
     const configPath = getClientConfigPath(clientId);
     const result = await addServerToClient(clientId, server, configPath);
 
     if (result.action === "added") {
-      console.log(
-        chalk.green(`  ✓ ${CLIENT_NAMES[clientId]}`)
-      );
+      console.log(chalk.green(`  ✓ ${CLIENT_NAMES[clientId]}`));
       added++;
     } else if (result.action === "exists") {
       console.log(
         chalk.dim(`  ○ ${CLIENT_NAMES[clientId]} (already configured)`)
       );
-      existed++;
     } else {
       console.log(
         chalk.red(`  ✗ ${CLIENT_NAMES[clientId]}: ${result.message}`)
@@ -129,27 +189,11 @@ export async function install(
   }
 
   // Show env vars needed
-  if (entry.env && Object.keys(entry.env).length > 0 && added > 0) {
+  if (server.env && Object.keys(server.env).length > 0 && added > 0) {
     console.log(chalk.yellow("\n  Required environment variables:"));
-    for (const [key, val] of Object.entries(entry.env)) {
+    for (const key of Object.keys(server.env)) {
       console.log(chalk.dim(`    export ${key}=your-value-here`));
     }
-  }
-
-  // Show repo link
-  if (entry.repo && added > 0) {
-    console.log(
-      chalk.dim(`\n  Docs: https://github.com/${entry.repo}`)
-    );
-  }
-
-  console.log(
-    chalk.dim(`  https://stewrd.dev/registry/${entry.name}`)
-  );
-
-  // Track install (fire and forget, don't block CLI)
-  if (added > 0) {
-    trackInstall(entry.name, targetClients[0]).catch(() => {});
   }
 
   console.log("");
