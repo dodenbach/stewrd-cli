@@ -4,7 +4,7 @@
   "description": "The package manager for MCP servers. Discover, install, and sync across Claude, Cursor, and more.",
   "type": "module",
   "bin": {
-    "stewrd": "./dist/cli.js"
+    "stewrd": "dist/cli.js"
   },
   "scripts": {
     "build": "tsup",
@@ -22,6 +22,18 @@
   ],
   "author": "Simple Software LLC",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dodenbach/stewrd-cli.git"
+  },
+  "homepage": "https://stewrd.dev",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
