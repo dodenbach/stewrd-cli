@@ -6,6 +6,7 @@ import {
   CLIENT_NAMES,
   ALL_CLIENT_IDS,
 } from "../utils/client-paths.js";
+import { readLockfile, writeLockfile, removeFromLockfile } from "../lockfile.js";
 
 interface RemoveOptions {
   client?: string;
@@ -39,6 +40,17 @@ export async function remove(
       )
     );
     console.log(chalk.dim(`    Backup saved to: ${configPath}.bak`));
+
+    // Update lockfile
+    try {
+      const lockfile = await readLockfile();
+      if (lockfile && lockfile.servers[serverName]) {
+        removeFromLockfile(lockfile, serverName);
+        await writeLockfile(lockfile);
+      }
+    } catch {
+      // Best-effort
+    }
   } else {
     console.error(chalk.red(`  ✗ ${result.message}`));
     process.exit(1);

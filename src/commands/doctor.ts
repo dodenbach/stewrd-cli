@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import ora from "ora";
 import { scanAll } from "../scanners/index.js";
+import { readLockfile, checkDrift } from "../lockfile.js";
 import type { McpServer, ClientScanResult } from "../types.js";
 
 interface Issue {
@@ -135,6 +136,41 @@ export async function doctor(): Promise<void> {
         message: `Only configured in ${clients[0]} — missing from ${activeClients - 1} other client${activeClients > 2 ? "s" : ""}`,
         fix: `stewrd sync`,
       });
+    }
+  }
+
+  // Check lockfile drift
+  const lockfile = await readLockfile();
+  if (lockfile) {
+    const seen = new Set<string>();
+    for (const client of scanResult.clients) {
+      for (const server of client.servers) {
+        if (seen.has(server.name)) continue;
+        seen.add(server.name);
+
+        const locked = lockfile.servers[server.name];
+        if (!locked) {
+          allIssues.push({
+            severity: "info",
+            server: server.name,
+            client: client.client,
+            message: "Not in lockfile — untracked server",
+            fix: "stewrd lock",
+          });
+          continue;
+        }
+
+        const drift = checkDrift(server, locked);
+        if (drift) {
+          allIssues.push({
+            severity: "warn",
+            server: server.name,
+            client: client.client,
+            message: `Lockfile drift: ${drift}`,
+            fix: "stewrd lock to update, or stewrd lock --check to review",
+          });
+        }
+      }
     }
   }
 

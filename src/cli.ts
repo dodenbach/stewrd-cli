@@ -6,13 +6,14 @@ import { sync } from "./commands/sync.js";
 import { doctor } from "./commands/doctor.js";
 import { search } from "./commands/search.js";
 import { install } from "./commands/install.js";
+import { lock } from "./commands/lock.js";
 
 const program = new Command();
 
 program
   .name("stewrd")
   .description(
-    "The package manager for MCP servers. Discover, install, and sync across Claude, Cursor, and more."
+    "Manage MCP servers across every AI client. Scan, install, sync, lock, and audit."
   )
   .version("0.2.0");
 
@@ -77,5 +78,12 @@ program
   .command("doctor")
   .description("Check MCP server configs for issues")
   .action(doctor);
+
+program
+  .command("lock")
+  .description("Generate or verify a lockfile for reproducible MCP configs")
+  .option("--global", "Use global lockfile (~/.stewrd/lock.json)")
+  .option("--check", "Verify current configs match the lockfile")
+  .action(lock);
 
 program.parse();

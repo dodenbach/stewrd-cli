@@ -1,7 +1,7 @@
 {
   "name": "stewrd",
   "version": "0.2.0",
-  "description": "The package manager for MCP servers. Discover, install, and sync across Claude, Cursor, and more.",
+  "description": "Manage MCP servers across every AI client. Scan, install, sync, lock, and audit.",
   "type": "module",
   "bin": {
     "stewrd": "dist/cli.js"

@@ -16,6 +16,13 @@ import {
   type ClientId,
 } from "../utils/client-paths.js";
 import type { McpServer } from "../types.js";
+import {
+  readLockfile,
+  writeLockfile,
+  createLockfile,
+  addToLockfile,
+  type LockedServer,
+} from "../lockfile.js";
 
 interface InstallOptions {
   client?: string;
@@ -185,6 +192,19 @@ export async function install(
       console.log(
         chalk.red(`  ✗ ${CLIENT_NAMES[clientId]}: ${result.message}`)
       );
+    }
+  }
+
+  // Update lockfile
+  if (added > 0) {
+    try {
+      const lockfile = (await readLockfile()) || createLockfile();
+      const lockSource: LockedServer["source"] =
+        source === "curated" ? "curated" : "official";
+      addToLockfile(lockfile, server, lockSource);
+      await writeLockfile(lockfile);
+    } catch {
+      // Lockfile update is best-effort, don't fail the install
     }
   }
 
