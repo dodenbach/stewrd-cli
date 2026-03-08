@@ -18,6 +18,7 @@ program
 
 program
   .command("scan")
+  .alias("ls")
   .description("Discover all MCP servers configured on this machine")
   .option("--json", "Output as JSON")
   .action(scan);
