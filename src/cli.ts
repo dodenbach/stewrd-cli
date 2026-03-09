@@ -7,6 +7,7 @@ import { doctor } from "./commands/doctor.js";
 import { search } from "./commands/search.js";
 import { install } from "./commands/install.js";
 import { lock } from "./commands/lock.js";
+import { audit } from "./commands/audit.js";
 
 const program = new Command();
 
@@ -78,6 +79,13 @@ program
   .command("doctor")
   .description("Check MCP server configs for issues")
   .action(doctor);
+
+program
+  .command("audit")
+  .description("Deep security audit of all MCP server configurations")
+  .option("--json", "Output report as JSON")
+  .option("--ci", "Exit with code 1 if security score < 70")
+  .action(audit);
 
 program
   .command("lock")
